@@ -1,4 +1,4 @@
-import type { Complaint, ComplaintStatus, Severity, Channel, TeamMember, UserRole, PolicyArticle } from './types'
+import { defaultSlaRules, minutesUntilSla, type Complaint, type ComplaintStatus, type Severity, type Channel, type TeamMember, type UserRole, type PolicyArticle, type SlaRules } from './types'
 
 export type WorkspaceProfile = { id: string; displayName: string; role: UserRole }
 export type ResolverWorkspace = {
@@ -7,6 +7,7 @@ export type ResolverWorkspace = {
   team: TeamMember[]
   articles: PolicyArticle[]
   duplicateDecisions: Record<string, 'confirmed' | 'rejected'>
+  slaRules: SlaRules
   error?: string
 }
 
@@ -24,6 +25,8 @@ type ComplaintRow = {
   status: ComplaintStatus
   minutes_to_sla: number
   received_at: string
+  sla_due_at: string | null
+  resolved_at: string | null
   message: string
   summary: string
   recommended_action: string
@@ -32,6 +35,15 @@ type ComplaintRow = {
 type EventRow = { complaint_id: string; event_type: Complaint['events'][number]['type']; title: string; detail: string; created_at: string }
 type DuplicateRow = { complaint_a_id: string; complaint_b_id: string; status: string }
 type KnowledgeRow = { id: string; title: string; category: string; content: string; updated_at: string }
+type SlaSettingsRow = { standard_first_response_hours: number; critical_response_hours: number; escalation_elapsed_percent: number }
+
+export function mapSlaRules(row?: SlaSettingsRow | null): SlaRules {
+  return row ? {
+    standardFirstResponseHours: row.standard_first_response_hours,
+    criticalResponseHours: row.critical_response_hours,
+    escalationElapsedPercent: row.escalation_elapsed_percent,
+  } : defaultSlaRules
+}
 
 const avatarColors = ['bg-blue-100 text-blue-700', 'bg-emerald-100 text-emerald-700', 'bg-violet-100 text-violet-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700']
 
@@ -44,6 +56,7 @@ export function mapComplaintRows(
   profileRows: ProfileRow[],
   eventRows: EventRow[],
   duplicateRows: DuplicateRow[],
+  slaRules: SlaRules = defaultSlaRules,
 ): Complaint[] {
   const profileById = new Map(profileRows.map((profile) => [profile.id, profile]))
   const complaintById = new Map(rows.map((row) => [row.id, row.complaint_number]))
@@ -75,7 +88,12 @@ export function mapComplaintRows(
     sentiment: row.sentiment,
     assignedTo: row.assigned_to ? profileById.get(row.assigned_to)?.display_name ?? 'Unassigned' : 'Unassigned',
     status: row.status,
-    minutesToSla: row.minutes_to_sla,
+    minutesToSla: minutesUntilSla(row.sla_due_at ?? new Date(new Date(row.received_at).getTime() + (row.severity === 'Critical' ? slaRules.criticalResponseHours : slaRules.standardFirstResponseHours) * 3_600_000).toISOString()),
+    slaTargetMinutes: row.sla_due_at ? Math.max(1, Math.round((new Date(row.sla_due_at).getTime() - new Date(row.received_at).getTime()) / 60_000)) : (row.severity === 'Critical' ? slaRules.criticalResponseHours : slaRules.standardFirstResponseHours) * 60,
+    slaRiskThresholdMinutes: Math.ceil(((row.sla_due_at ? Math.max(1, Math.round((new Date(row.sla_due_at).getTime() - new Date(row.received_at).getTime()) / 60_000)) : (row.severity === 'Critical' ? slaRules.criticalResponseHours : slaRules.standardFirstResponseHours) * 60) * (100 - slaRules.escalationElapsedPercent)) / 100),
+    receivedAt: row.received_at,
+    slaDueAt: row.sla_due_at ?? new Date(new Date(row.received_at).getTime() + (row.severity === 'Critical' ? slaRules.criticalResponseHours : slaRules.standardFirstResponseHours) * 3_600_000).toISOString(),
+    resolvedAt: row.resolved_at,
     received: formatDatabaseTime(row.received_at),
     message: row.message,
     summary: row.summary,
@@ -98,13 +116,15 @@ export function mapWorkspace(
   eventRows: EventRow[],
   duplicateRows: DuplicateRow[],
   knowledgeRows: KnowledgeRow[],
+  settingsRow?: SlaSettingsRow | null,
 ): ResolverWorkspace {
   const profileRow = profileRows.find((item) => item.id === userId)
+  const slaRules = mapSlaRules(settingsRow)
   if (!profileRow) {
-    return { profile: null, complaints: [], team: [], articles: [], duplicateDecisions: {}, error: 'Your account does not have a workspace profile. Ask a workspace manager to restore access.' }
+    return { profile: null, complaints: [], team: [], articles: [], duplicateDecisions: {}, slaRules, error: 'Your account does not have a workspace profile. Ask a workspace manager to restore access.' }
   }
 
-  const complaints = mapComplaintRows(complaintRows, profileRows, eventRows, duplicateRows)
+  const complaints = mapComplaintRows(complaintRows, profileRows, eventRows, duplicateRows, slaRules)
   const role: UserRole = profileRow.role === 'manager' ? 'Manager' : 'Agent'
   const profile: WorkspaceProfile = { id: profileRow.id, displayName: profileRow.display_name, role }
   const team = profileRows.map((member, index) => {
@@ -138,6 +158,7 @@ export function mapWorkspace(
       text: article.content,
     })),
     duplicateDecisions: decisions,
+    slaRules,
   }
 }
 

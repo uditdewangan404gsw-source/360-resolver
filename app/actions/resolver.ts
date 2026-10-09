@@ -2,12 +2,13 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { formatDatabaseTime, mapComplaintRows, type ComplaintRow, type DuplicateRow, type EventRow, type ProfileRow } from '@/components/resolver/data-mappers'
-import { makeComplaint, type Channel, type Complaint, type ComplaintStatus, type NewComplaintInput, type Severity } from '@/components/resolver/types'
+import { defaultSlaRules, makeComplaint, type Channel, type Complaint, type ComplaintStatus, type NewComplaintInput, type Severity, type SlaRules } from '@/components/resolver/types'
+import { mapSlaRules } from '@/components/resolver/data-mappers'
 
 const channels: Channel[] = ['Email', 'Phone', 'Branch', 'Web form', 'Mobile app', 'Social']
 const severities: Severity[] = ['Critical', 'High', 'Medium', 'Low']
 const statuses: ComplaintStatus[] = ['Open', 'In progress', 'Pending customer', 'Resolved']
-const complaintColumns = 'id,complaint_number,subject,customer_ref,channel,category,severity,sentiment,assigned_to,status,minutes_to_sla,received_at,message,summary,recommended_action,response_draft'
+const complaintColumns = 'id,complaint_number,subject,customer_ref,channel,category,severity,sentiment,assigned_to,status,minutes_to_sla,received_at,sla_due_at,resolved_at,message,summary,recommended_action,response_draft'
 
 async function requireUser() {
   const supabase = await createClient()
@@ -32,7 +33,12 @@ function validateNewComplaint(input: NewComplaintInput) {
 export async function createComplaintAction(input: NewComplaintInput): Promise<Complaint> {
   const valid = validateNewComplaint(input)
   const { supabase, user } = await requireUser()
+  const { data: settingsRow } = await supabase.from('workspace_settings').select('standard_first_response_hours,critical_response_hours,escalation_elapsed_percent').eq('id', true).maybeSingle()
+  const slaRules = mapSlaRules(settingsRow)
   const draft = makeComplaint(valid, 0)
+  const receivedAt = new Date()
+  const targetHours = valid.severity === 'Critical' ? slaRules.criticalResponseHours : slaRules.standardFirstResponseHours
+  const dueAt = new Date(receivedAt.getTime() + targetHours * 3_600_000)
   const { data: row, error } = await supabase.from('complaints').insert({
     subject: valid.subject,
     customer_ref: valid.customerRef,
@@ -42,7 +48,9 @@ export async function createComplaintAction(input: NewComplaintInput): Promise<C
     sentiment: 'Neutral',
     assigned_to: user.id,
     status: 'Open',
-    minutes_to_sla: 480,
+    minutes_to_sla: targetHours * 60,
+    received_at: receivedAt.toISOString(),
+    sla_due_at: dueAt.toISOString(),
     message: valid.message,
     summary: draft.summary,
     recommended_action: draft.recommendedAction,
@@ -65,7 +73,7 @@ export async function createComplaintAction(input: NewComplaintInput): Promise<C
   const complaintRows = [row as ComplaintRow]
   const eventRows = [event as EventRow]
   const profiles = (profileRows.data ?? []) as ProfileRow[]
-  const mapped = mapComplaintRows(complaintRows, profiles, eventRows, [] )[0]
+  const mapped = mapComplaintRows(complaintRows, profiles, eventRows, [], slaRules)[0]
   return { ...mapped, responseDraft: draft.responseDraft.replace(draft.id, row.complaint_number) }
 }
 
@@ -82,17 +90,14 @@ export async function updateComplaintAction(id: string, changes: Partial<Complai
   if (changes.status !== undefined) {
     if (!statuses.includes(changes.status)) throw new Error('Choose a valid complaint status.')
     patch.status = changes.status
+    patch.resolved_at = changes.status === 'Resolved' ? new Date().toISOString() : null
     result.status = changes.status
+    result.resolvedAt = changes.status === 'Resolved' ? String(patch.resolved_at) : null
   }
   if (changes.severity !== undefined) {
     if (!severities.includes(changes.severity)) throw new Error('Choose a valid complaint severity.')
     patch.severity = changes.severity
     result.severity = changes.severity
-  }
-  if (changes.minutesToSla !== undefined) {
-    if (!Number.isInteger(changes.minutesToSla) || changes.minutesToSla < -100000 || changes.minutesToSla > 100000) throw new Error('Invalid SLA value.')
-    patch.minutes_to_sla = changes.minutesToSla
-    result.minutesToSla = changes.minutesToSla
   }
   if (changes.responseDraft !== undefined) {
     if (typeof changes.responseDraft !== 'string' || changes.responseDraft.length > 5000) throw new Error('The response draft is too long.')
@@ -131,6 +136,26 @@ export async function updateComplaintAction(id: string, changes: Partial<Complai
     result.events[result.events.length - 1] = { ...result.events[result.events.length - 1], type: 'agent', time: formatDatabaseTime(new Date().toISOString()) }
   }
   return result
+}
+
+export async function saveSlaRulesAction(input: SlaRules): Promise<SlaRules> {
+  const standardFirstResponseHours = Number(input?.standardFirstResponseHours)
+  const criticalResponseHours = Number(input?.criticalResponseHours)
+  const escalationElapsedPercent = Number(input?.escalationElapsedPercent)
+  if (!Number.isInteger(standardFirstResponseHours) || standardFirstResponseHours < 1 || standardFirstResponseHours > 72 || !Number.isInteger(criticalResponseHours) || criticalResponseHours < 1 || criticalResponseHours > 24 || !Number.isInteger(escalationElapsedPercent) || escalationElapsedPercent < 1 || escalationElapsedPercent > 99) {
+    throw new Error('Enter valid whole-number SLA values within the allowed ranges.')
+  }
+  const { supabase } = await requireUser()
+  const rules = { standardFirstResponseHours, criticalResponseHours, escalationElapsedPercent }
+  const { data, error } = await supabase.from('workspace_settings').upsert({
+    id: true,
+    standard_first_response_hours: rules.standardFirstResponseHours,
+    critical_response_hours: rules.criticalResponseHours,
+    escalation_elapsed_percent: rules.escalationElapsedPercent,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'id' }).select('standard_first_response_hours,critical_response_hours,escalation_elapsed_percent').single()
+  if (error || !data) throw new Error('SLA rules could not be saved. Manager access is required.')
+  return mapSlaRules(data)
 }
 
 export async function saveDuplicateDecisionAction(firstNumber: string, secondNumber: string, decision: 'confirmed' | 'rejected') {

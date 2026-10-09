@@ -3,7 +3,7 @@
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Clock3, Ellipsis, Plus, Sparkles, UsersRound, CircleAlert, CheckCircle2, ChevronRight } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
-import { formatSla, isAtRisk, volumeData, type Complaint } from './types'
+import { buildDailyComplaintVolume, formatSla, isAtRisk, type Complaint, type SlaRules } from './types'
 
 function Panel({ title, description, action, children, className = '' }: { title: string; description?: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return <section className={`panel-card ${className}`}><div className="flex items-start justify-between gap-3 px-5 pt-5"><div><h2 className="text-[14px] font-semibold tracking-[-0.01em] text-slate-900">{title}</h2>{description && <p className="mt-1 text-[12px] text-slate-500">{description}</p>}</div>{action}</div><div className="px-5 pb-5 pt-4">{children}</div></section>
@@ -11,8 +11,9 @@ function Panel({ title, description, action, children, className = '' }: { title
 
 const severityClass: Record<string, string> = { Critical: 'severity-critical', High: 'severity-high', Medium: 'severity-medium', Low: 'severity-low' }
 
-export function DashboardView({ complaints, onNavigate, onMetricFilter, onSelectComplaint, role, displayName }: { complaints: Complaint[]; onNavigate: (view: 'inbox' | 'new' | 'sla' | 'analytics') => void; onMetricFilter: (filter: 'all' | 'open' | 'high' | 'risk') => void; onSelectComplaint: (id: string) => void; role: string; displayName: string }) {
+export function DashboardView({ complaints, slaRules, onNavigate, onMetricFilter, onSelectComplaint, role, displayName }: { complaints: Complaint[]; slaRules: SlaRules; onNavigate: (view: 'inbox' | 'new' | 'sla' | 'analytics') => void; onMetricFilter: (filter: 'all' | 'open' | 'high' | 'risk') => void; onSelectComplaint: (id: string) => void; role: string; displayName: string }) {
   const open = complaints.filter((item) => item.status !== 'Resolved').length
+  const volumeData = buildDailyComplaintVolume(complaints)
   const risk = complaints.filter(isAtRisk).length
   const highSeverity = complaints.filter((item) => item.severity === 'Critical' || item.severity === 'High').length
   const recent = [...complaints].slice(0, 5)
@@ -25,10 +26,10 @@ export function DashboardView({ complaints, onNavigate, onMetricFilter, onSelect
   const channelData = Object.entries(channelCounts).map(([name, count]) => ({ name, count, value: complaints.length ? Math.round((count / complaints.length) * 100) : 0 })).sort((a, b) => b.count - a.count)
   const chartColors = ['#1f4f9a', '#3d70bb', '#6893cf', '#94b5df', '#bed0e8']
   const metrics = [
-    { label: 'Total complaints', value: complaints.length, delta: '+8.2%', note: 'demo trend · 7 days', trend: 'up', filter: 'all' },
-    { label: 'Open cases', value: open, delta: '−4.6%', note: 'demo trend · 7 days', trend: 'down', filter: 'open' },
-    { label: 'High severity', value: highSeverity, delta: `${highSeverity} cases`, note: 'critical and high priority', trend: 'up', filter: 'high' },
-    { label: 'SLA at risk', value: risk, delta: `${atRisk.length} shown`, note: 'due within 2 hours', trend: 'risk', filter: 'risk' },
+    { label: 'Total complaints', value: complaints.length, delta: `${volumeData.reduce((sum, day) => sum + day.received, 0)} this week`, note: 'stored complaint records', trend: 'up', filter: 'all' },
+    { label: 'Open cases', value: open, delta: `${complaints.length ? Math.round((open / complaints.length) * 100) : 0}% of total`, note: 'not yet resolved', trend: 'down', filter: 'open' },
+    { label: 'High severity', value: highSeverity, delta: `${complaints.length ? Math.round((highSeverity / complaints.length) * 100) : 0}% of total`, note: 'critical and high priority', trend: 'up', filter: 'high' },
+    { label: 'SLA at risk', value: risk, delta: `${atRisk.length} shown`, note: `escalation at ${slaRules.escalationElapsedPercent}% elapsed`, trend: 'risk', filter: 'risk' },
   ]
   return <div className="flex flex-col gap-6">
     <div className="flex flex-wrap items-end justify-between gap-4">
@@ -43,7 +44,7 @@ export function DashboardView({ complaints, onNavigate, onMetricFilter, onSelect
       </button>)}
     </div>
     <div className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
-      <Panel title="Complaint volume" description="Incoming and resolved · 7-day sample" action={<button onClick={() => onNavigate('analytics')} className="text-[11px] font-semibold text-blue-800 hover:text-blue-950">View analytics <ArrowRight className="ml-1 inline size-3" /></button>}>
+      <Panel title="Complaint volume" description="Incoming and resolved · last 7 days" action={<button onClick={() => onNavigate('analytics')} className="text-[11px] font-semibold text-blue-800 hover:text-blue-950">View analytics <ArrowRight className="ml-1 inline size-3" /></button>}>
         <div className="h-[224px] w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={volumeData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}><defs><linearGradient id="receivedFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4d7ed9" stopOpacity={0.15} /><stop offset="95%" stopColor="#4d7ed9" stopOpacity={0} /></linearGradient><linearGradient id="resolvedFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#9baac2" stopOpacity={0.15} /><stop offset="95%" stopColor="#9baac2" stopOpacity={0} /></linearGradient></defs><CartesianGrid vertical={false} stroke="#edf0f4" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#66758a', fontSize: 11 }} dy={8} /><YAxis axisLine={false} tickLine={false} tick={{ fill: '#66758a', fontSize: 11 }} width={34} /><Tooltip contentStyle={{ borderRadius: 7, border: '1px solid #dce3ec', fontSize: 11, boxShadow: '0 8px 24px rgba(20,35,60,.08)' }} /><Area type="monotone" dataKey="received" name="Received" stroke="#315f9f" strokeWidth={2.5} activeDot={{ r: 4, strokeWidth: 0 }} fill="url(#receivedFill)" /><Area type="monotone" dataKey="resolved" name="Resolved" stroke="#8798ae" strokeWidth={2.5} activeDot={{ r: 4, strokeWidth: 0 }} fill="url(#resolvedFill)" /></AreaChart></ResponsiveContainer></div>
         <div className="mt-1 flex gap-5 text-[10px] text-slate-500"><span><i className="mr-1.5 inline-block size-2 rounded-full bg-[#4675d1]" />Received</span><span><i className="mr-1.5 inline-block size-2 rounded-full bg-[#93a1b7]" />Resolved</span></div>
       </Panel>
