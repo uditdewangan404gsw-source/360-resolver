@@ -11,7 +11,7 @@ function Panel({ title, description, action, children, className = '' }: { title
 
 const severityClass: Record<string, string> = { Critical: 'severity-critical', High: 'severity-high', Medium: 'severity-medium', Low: 'severity-low' }
 
-export function DashboardView({ complaints, onNavigate, onMetricFilter, onSelectComplaint, role }: { complaints: Complaint[]; onNavigate: (view: 'inbox' | 'new' | 'sla' | 'analytics') => void; onMetricFilter: (filter: 'all' | 'open' | 'high' | 'risk') => void; onSelectComplaint: (id: string) => void; role: string }) {
+export function DashboardView({ complaints, onNavigate, onMetricFilter, onSelectComplaint, role, displayName }: { complaints: Complaint[]; onNavigate: (view: 'inbox' | 'new' | 'sla' | 'analytics') => void; onMetricFilter: (filter: 'all' | 'open' | 'high' | 'risk') => void; onSelectComplaint: (id: string) => void; role: string; displayName: string }) {
   const open = complaints.filter((item) => item.status !== 'Resolved').length
   const risk = complaints.filter(isAtRisk).length
   const highSeverity = complaints.filter((item) => item.severity === 'Critical' || item.severity === 'High').length
@@ -32,7 +32,7 @@ export function DashboardView({ complaints, onNavigate, onMetricFilter, onSelect
   ]
   return <div className="flex flex-col gap-6">
     <div className="flex flex-wrap items-end justify-between gap-4">
-      <div><div className="flex items-center gap-2"><h1 className="text-[26px] font-semibold tracking-[-0.035em] text-slate-950">Good morning, {role === 'Manager' ? 'Priya' : 'Marcus'}</h1><span className="demo-tag"><span className="size-1.5 rounded-full bg-emerald-500" />DEMO DATA</span></div><p className="mt-1 text-[12px] text-slate-500">Here’s what’s happening across complaint operations today.</p></div>
+      <div><div className="flex items-center gap-2"><h1 className="text-[26px] font-semibold tracking-[-0.035em] text-slate-950">Good morning, {displayName.split(' ')[0]}</h1><span className="demo-tag"><span className="size-1.5 rounded-full bg-emerald-500" />WORKSPACE DATA</span></div><p className="mt-1 text-[12px] text-slate-500">Here’s what’s happening across complaint operations today.</p></div>
       <Button onClick={() => onNavigate('new')} className="h-9 rounded-md bg-[#2459c5] px-3.5 text-[12px] hover:bg-[#1d4ca8]"><Plus data-icon="inline-start" />New complaint</Button>
     </div>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
