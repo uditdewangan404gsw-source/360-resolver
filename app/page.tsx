@@ -9,6 +9,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
     team: [],
     articles: [],
     duplicateDecisions: {},
+    slaRules: { standardFirstResponseHours: 4, criticalResponseHours: 1, escalationElapsedPercent: 75 },
     error: 'The workspace data could not be loaded. Check the Supabase table access and row-level security policies.',
   }))])
 
