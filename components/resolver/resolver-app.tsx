@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, ChevronDown, CircleHelp, Search, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BrandLockup } from '@/components/brand-lockup'
 import { createClient } from '@/lib/supabase/client'
 import { correctComplaintTriageAction, createComplaintAction, retryComplaintTriageAction, saveDuplicateDecisionAction, saveSlaRulesAction, updateComplaintAction } from '@/app/actions/resolver'
 import { AuthScreen } from './auth-screen'
@@ -19,10 +20,20 @@ import { SlaEscalationsView } from './sla-view'
 import { navigation, type Complaint, type SlaRules, type UserRole, type ViewKey } from './types'
 
 function DemoLogin({ onLogin }: { onLogin: (role: UserRole) => void }) {
-  return <main className="login-screen"><div className="login-brand"><div className="flex size-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_24px_rgba(37,90,197,.25)]"><ShieldCheck className="size-5" /></div><div><div className="text-[15px] font-semibold tracking-tight text-slate-900">360° Resolver</div><div className="text-[10px] text-slate-500">COMPLAINT OPERATIONS PLATFORM</div></div></div><div className="login-card"><div className="mb-7"><span className="login-kicker">HACKATHON DEMO WORKSPACE</span><h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-slate-950">Welcome back</h1><p className="mt-2 text-[12px] leading-relaxed text-slate-500">Choose a demo role to explore the complaint management workspace.</p></div><div className="flex flex-col gap-3"><button onClick={() => onLogin('Manager')} className="login-role"><div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><ShieldCheck className="size-[18px]" /></div><div className="flex-1 text-left"><div className="text-[12px] font-semibold text-slate-800">Continue as Manager</div><div className="mt-1 text-[10px] text-slate-500">Team oversight, escalations & analytics</div></div><span className="text-blue-600">→</span></button><button onClick={() => onLogin('Agent')} className="login-role"><div className="flex size-10 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><CircleHelp className="size-[18px]" /></div><div className="flex-1 text-left"><div className="text-[12px] font-semibold text-slate-800">Continue as Agent</div><div className="mt-1 text-[10px] text-slate-500">Complaint queue & response review</div></div><span className="text-slate-400">→</span></button></div><div className="mt-6 rounded-md border border-amber-100 bg-amber-50/70 px-3 py-2.5 text-[10px] leading-relaxed text-amber-900"><span className="font-semibold">Demo only.</span> No real banking accounts, customer data, or message delivery are connected.</div><div className="mt-7 border-t border-slate-100 pt-4 text-center text-[10px] text-slate-400">Secure operations experience · Simulation environment</div></div><div className="login-footer">© 2026 360° Resolver <span className="mx-2">·</span> Internal hackathon prototype</div></main>
+  return <main className="login-screen"><BrandLockup className="login-brand" subtitle="COMPLAINT OPERATIONS PLATFORM" size={46} /><div className="login-card"><div className="mb-7"><span className="login-kicker">HACKATHON DEMO WORKSPACE</span><h1 className="mt-3 text-[26px] font-semibold tracking-[-0.045em] text-slate-950">Welcome back</h1><p className="mt-2 text-[12px] leading-relaxed text-slate-500">Choose a demo role to explore the complaint management workspace.</p></div><div className="flex flex-col gap-3"><button onClick={() => onLogin('Manager')} className="login-role"><div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><ShieldCheck className="size-[18px]" /></div><div className="flex-1 text-left"><div className="text-[12px] font-semibold text-slate-800">Continue as Manager</div><div className="mt-1 text-[10px] text-slate-500">Team oversight, escalations & analytics</div></div><span className="text-blue-600">→</span></button><button onClick={() => onLogin('Agent')} className="login-role"><div className="flex size-10 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><CircleHelp className="size-[18px]" /></div><div className="flex-1 text-left"><div className="text-[12px] font-semibold text-slate-800">Continue as Agent</div><div className="mt-1 text-[10px] text-slate-500">Complaint queue & response review</div></div><span className="text-slate-400">→</span></button></div><div className="mt-6 rounded-md border border-amber-100 bg-amber-50/70 px-3 py-2.5 text-[10px] leading-relaxed text-amber-900"><span className="font-semibold">Demo only.</span> No real banking accounts, customer data, or message delivery are connected.</div><div className="mt-7 border-t border-slate-100 pt-4 text-center text-[10px] text-slate-400">Secure operations experience · Simulation environment</div></div><div className="login-footer">© 2026 360° Resolver <span className="mx-2">·</span> Internal hackathon prototype</div></main>
 }
 
-export function ResolverApp({ workspace, initialAuthError }: { workspace: ResolverWorkspace; initialAuthError?: string }) {
+export function ResolverApp({
+  workspace,
+  initialAuthError,
+  initialAuthAudience,
+  initialAuthMode,
+}: {
+  workspace: ResolverWorkspace
+  initialAuthError?: string
+  initialAuthAudience?: 'customer' | 'agent'
+  initialAuthMode?: 'sign-in' | 'sign-up'
+}) {
   const router = useRouter()
   const profile = workspace.profile
   const role: UserRole = profile?.role ?? 'Agent'
@@ -121,7 +132,11 @@ export function ResolverApp({ workspace, initialAuthError }: { workspace: Resolv
     router.refresh()
   }
 
-  if (!profile) return <AuthScreen initialError={initialAuthError ?? workspace.errorStage ?? (workspace.error ? 'workspace' : undefined)} />
+  if (!profile) return <AuthScreen
+    initialError={initialAuthError ?? workspace.errorStage ?? (workspace.error ? 'workspace' : undefined)}
+    initialAudience={initialAuthAudience}
+    initialMode={initialAuthMode}
+  />
 
   return <div className="app-frame">
     {mobileMenuOpen && <button aria-label="Close navigation" className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)} />}

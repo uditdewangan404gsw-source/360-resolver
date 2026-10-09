@@ -14,14 +14,14 @@ const developmentAuthErrors: Record<string, string> = {
   'callback-cookie-write-failed': 'Diagnostic: cookieStore.set threw during the exchange; the exception was caught by the shared client.',
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ authError?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ authError?: string; audience?: string; mode?: string }> }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (user) {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
     if (profile?.role === 'customer') redirect('/customer/dashboard')
   }
-  const [{ authError }, workspace] = await Promise.all([searchParams, loadResolverWorkspace().catch((error): ResolverWorkspace => ({
+  const [{ authError, audience, mode }, workspace] = await Promise.all([searchParams, loadResolverWorkspace().catch((error): ResolverWorkspace => ({
     profile: null,
     complaints: [],
     team: [],
@@ -37,5 +37,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
   const errorMessage = authError === 'callback'
     ? 'callback'
     : process.env.NODE_ENV === 'development' ? developmentAuthErrors[authError ?? ''] : undefined
-  return <ResolverApp key={workspace.profile?.id ?? 'signed-out'} workspace={workspace} initialAuthError={errorMessage} />
+  return <ResolverApp
+    key={workspace.profile?.id ?? 'signed-out'}
+    workspace={workspace}
+    initialAuthError={errorMessage}
+    initialAuthAudience={audience === 'customer' ? 'customer' : 'agent'}
+    initialAuthMode={mode === 'sign-up' ? 'sign-up' : 'sign-in'}
+  />
 }
