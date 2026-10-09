@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowDownWideNarrow, ChevronDown, Download, Filter, Search, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { formatSla, type Complaint, type ComplaintStatus, type Severity } from './types'
+import { formatSla, isAtRisk, type Complaint, type ComplaintStatus, type Severity } from './types'
 
 const severityClass: Record<Severity, string> = { Critical: 'severity-critical', High: 'severity-high', Medium: 'severity-medium', Low: 'severity-low' }
 const statusClass: Record<ComplaintStatus, string> = { Open: 'status-open', 'In progress': 'status-progress', 'Pending customer': 'status-pending', Resolved: 'status-resolved' }
@@ -19,7 +19,7 @@ export function InboxView({ complaints, initialFilter, searchTerm, onSelectCompl
   const [sort, setSort] = useState<'newest' | 'sla'>('newest')
   const results = useMemo(() => complaints.filter((item) => {
     const haystack = `${item.id} ${item.subject} ${item.customerRef} ${item.category} ${item.assignedTo}`.toLowerCase()
-    return (!query || haystack.includes(query.toLowerCase())) && (severity === 'All severity' || item.severity === severity || (severity === 'High' && item.severity === 'Critical')) && (status === 'All status' || item.status === status) && (!openOnly || item.status !== 'Resolved') && (!riskOnly || (item.minutesToSla <= 120 && item.status !== 'Resolved')) && (channel === 'All channels' || item.channel === channel)
+    return (!query || haystack.includes(query.toLowerCase())) && (severity === 'All severity' || item.severity === severity || (severity === 'High' && item.severity === 'Critical')) && (status === 'All status' || item.status === status) && (!openOnly || item.status !== 'Resolved') && (!riskOnly || isAtRisk(item)) && (channel === 'All channels' || item.channel === channel)
   }).sort((a, b) => sort === 'sla' ? a.minutesToSla - b.minutesToSla : b.id.localeCompare(a.id)), [complaints, query, severity, status, channel, sort])
   return <div className="flex flex-col gap-5">
     <div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><h1 className="text-[23px] font-semibold tracking-[-0.04em] text-slate-950">Complaint inbox</h1><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{results.length} shown</span></div><p className="mt-1 text-[12px] text-slate-500">Review, prioritize, and assign customer complaints.</p></div><Button onClick={onNavigate} className="h-9 rounded-md bg-[#2459c5] px-3.5 text-[12px] hover:bg-[#1d4ca8]">+ New complaint</Button></div>
