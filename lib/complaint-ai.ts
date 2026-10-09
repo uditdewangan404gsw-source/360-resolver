@@ -1,20 +1,10 @@
 import 'server-only'
 
 import { z } from 'zod'
+import { classificationSchema, type ComplaintClassification } from '@/lib/complaint-triage-schema'
 
-export const classificationSchema = z.object({
-  category: z.string().trim().min(1).max(100),
-  product: z.string().trim().min(1).max(100),
-  severity: z.enum(['Critical', 'High', 'Medium', 'Low']),
-  sentiment: z.enum(['Frustrated', 'Negative', 'Neutral', 'Positive']),
-  language: z.string().trim().min(1).max(80),
-  summary: z.string().trim().min(1).max(500),
-  recommendedAction: z.string().trim().min(1).max(500),
-  possibleFraud: z.boolean(),
-  fraudReason: z.string().trim().max(300),
-})
-
-export type ComplaintClassification = z.infer<typeof classificationSchema>
+export { classificationSchema }
+export type { ComplaintClassification }
 export const responseDraftSchema = z.object({ response: z.string().trim().min(20).max(5000) })
 export type PolicySource = { id: string; title: string; category: string; updatedAt: string }
 
@@ -72,15 +62,37 @@ export function deterministicClassification(input: { subject: string; message: s
   const product = /credit card|debit card|card/.test(text) ? 'Payment card'
     : /mobile app|online banking|login|password/.test(text) ? 'Digital banking'
       : /loan|mortgage/.test(text) ? 'Loan' : 'Unspecified'
+  const allowedCategory = CATEGORY_VALUES.includes(input.category as typeof CATEGORY_VALUES[number]) ? input.category as typeof CATEGORY_VALUES[number] : 'Other'
   return classificationSchema.parse({
-    category, product, severity, sentiment, language: 'English (heuristic; verify manually)',
+    category: CATEGORY_VALUES.includes(category as typeof CATEGORY_VALUES[number]) ? category as typeof CATEGORY_VALUES[number] : allowedCategory, product, severity, sentiment, language: 'Unknown; confirm with customer',
     summary: `Customer reports: ${input.message.trim().slice(0, 420)}`,
     recommendedAction: possibleFraud
       ? 'Prioritize a human review, verify the transaction through approved internal systems, and follow the applicable fraud escalation policy.'
       : 'Review the reported issue against approved policy, verify relevant records, and have an agent determine the next customer update.',
     possibleFraud,
     fraudReason: possibleFraud ? 'Fraud-related wording was detected; this is a review flag, not a finding.' : '',
+    confidence: 0.35,
+    explanation: 'Deterministic keyword fallback; this is not an AI-generated classification and needs human review.',
   })
+}
+
+export function isAiProviderConfigured() {
+  return Boolean(process.env.AI_GATEWAY_API_KEY)
+}
+
+export async function classifyComplaint(input: { subject: string; message: string; category: string; severity: string }): Promise<{ result: ComplaintClassification; source: 'ai' | 'fallback' }> {
+  if (!isAiProviderConfigured()) return { result: deterministicClassification(input), source: 'fallback' }
+  const result = await generateStructuredOutput(classificationSchema, [
+    'Classify this customer complaint for an agent to review. Return only the schema fields.',
+    'Use category exactly from: Card payments, Digital banking, Fees & charges, Disputes, Other.',
+    'Use the existing severity and sentiment enums. Give concise summary and safe next action.',
+    'possibleFraud is only a review indicator, never a fraud finding. Never recommend automatically closing a complaint.',
+    'Set confidence between 0 and 1 and explain key evidence briefly. Do not repeat account identifiers.',
+    `Current category: ${input.category}; current severity: ${input.severity}`,
+    `Subject: ${input.subject}`,
+    `Customer message: ${input.message}`,
+  ].join('\n\n'))
+  return { result, source: 'ai' }
 }
 
 export function deterministicResponseDraft(input: { subject: string; complaintNumber: string; article: { title: string; content: string } }) {

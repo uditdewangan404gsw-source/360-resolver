@@ -13,6 +13,26 @@ export type UserRole = 'Manager' | 'Agent'
 export type ComplaintStatus = 'Open' | 'In progress' | 'Pending customer' | 'Resolved'
 export type Severity = 'Critical' | 'High' | 'Medium' | 'Low'
 export type Channel = 'Email' | 'Phone' | 'Branch' | 'Web form' | 'Mobile app' | 'Social'
+export type TriageSource = 'ai' | 'fallback'
+export type TriageStatus = 'pending' | 'processing' | 'complete' | 'failed'
+export type ComplaintTriage = {
+  status: TriageStatus
+  source: TriageSource | null
+  category: string | null
+  product: string | null
+  severity: Severity | null
+  sentiment: 'Frustrated' | 'Negative' | 'Neutral' | 'Positive' | null
+  language: string | null
+  summary: string | null
+  recommendedAction: string | null
+  possibleFraud: boolean | null
+  fraudReason: string | null
+  confidence: number | null
+  explanation: string | null
+  error: string | null
+  updatedAt: string | null
+  reviewedAt: string | null
+}
 
 export type SlaRules = {
   standardFirstResponseHours: number
@@ -47,6 +67,7 @@ export type Complaint = {
   summary: string
   recommendedAction: string
   responseDraft: string
+  triage: ComplaintTriage
   duplicateIds: string[]
   events: { time: string; title: string; detail: string; type: 'system' | 'agent' | 'customer' }[]
 }
@@ -169,6 +190,12 @@ export function makeComplaint(input: NewComplaintInput, currentCount: number): C
     summary: `Customer reports: ${input.message.slice(0, 138)}${input.message.length > 138 ? '…' : ''}`,
     recommendedAction: 'Review the customer’s concern, verify the relevant account records, and confirm the next update with the customer.',
     responseDraft: `Hello, thank you for contacting us about ${input.subject.toLowerCase()}. We’re reviewing your concern and will follow up with an update. Your case reference is ${id}.`,
+    triage: {
+      status: 'pending', source: null, category: null, product: null, severity: null,
+      sentiment: null, language: null, summary: null, recommendedAction: null,
+      possibleFraud: null, fraudReason: null, confidence: null, explanation: null,
+      error: null, updatedAt: null, reviewedAt: null,
+    },
     duplicateIds: [],
     events: [{ time: 'Just now', title: 'Complaint received', detail: 'Created in the authenticated workspace', type: 'customer' }],
   }

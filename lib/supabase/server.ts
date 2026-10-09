@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-export async function createClient() {
+export async function createClient(onCookieWriteError?: () => void) {
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -17,6 +17,7 @@ export async function createClient() {
           try {
             cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
           } catch {
+            onCookieWriteError?.()
             // Server Components cannot write cookies; proxy.ts refreshes sessions.
           }
         },

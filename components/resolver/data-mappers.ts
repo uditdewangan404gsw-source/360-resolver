@@ -9,6 +9,7 @@ export type ResolverWorkspace = {
   duplicateDecisions: Record<string, 'confirmed' | 'rejected'>
   slaRules: SlaRules
   error?: string
+  errorStage?: 'auth' | 'profile' | 'workspace'
 }
 
 type ProfileRow = { id: string; display_name: string; role: 'manager' | 'agent' }
@@ -31,6 +32,22 @@ type ComplaintRow = {
   summary: string
   recommended_action: string
   response_draft: string
+  triage_status: Complaint['triage']['status']
+  triage_source: Complaint['triage']['source']
+  triage_category: string | null
+  triage_product: string | null
+  triage_severity: Complaint['triage']['severity']
+  triage_sentiment: Complaint['triage']['sentiment']
+  triage_language: string | null
+  triage_summary: string | null
+  triage_recommended_action: string | null
+  triage_possible_fraud: boolean | null
+  triage_fraud_reason: string | null
+  triage_confidence: number | null
+  triage_explanation: string | null
+  triage_error: string | null
+  triage_updated_at: string | null
+  triage_reviewed_at: string | null
 }
 type EventRow = { complaint_id: string; event_type: Complaint['events'][number]['type']; title: string; detail: string; created_at: string }
 type DuplicateRow = { complaint_a_id: string; complaint_b_id: string; status: string }
@@ -99,6 +116,24 @@ export function mapComplaintRows(
     summary: row.summary,
     recommendedAction: row.recommended_action,
     responseDraft: row.response_draft,
+    triage: {
+      status: row.triage_status ?? 'pending',
+      source: row.triage_source,
+      category: row.triage_category,
+      product: row.triage_product,
+      severity: row.triage_severity,
+      sentiment: row.triage_sentiment,
+      language: row.triage_language,
+      summary: row.triage_summary,
+      recommendedAction: row.triage_recommended_action,
+      possibleFraud: row.triage_possible_fraud,
+      fraudReason: row.triage_fraud_reason,
+      confidence: row.triage_confidence,
+      explanation: row.triage_explanation,
+      error: row.triage_error,
+      updatedAt: row.triage_updated_at,
+      reviewedAt: row.triage_reviewed_at,
+    },
     duplicateIds: [...(duplicatesByComplaint.get(row.id) ?? [])],
     events: (eventsByComplaint.get(row.id) ?? []).map((event) => ({
       time: formatDatabaseTime(event.created_at),
