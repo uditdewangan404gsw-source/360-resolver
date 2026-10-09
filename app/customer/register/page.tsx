@@ -1,2 +1,5 @@
-import { CustomerAuth } from '@/components/customer/customer-auth'
-export default function Page() { return <CustomerAuth mode="register" /> }
+import { redirect } from 'next/navigation'
+
+export default function CustomerRegisterPage() {
+  redirect('/?audience=customer&mode=sign-up')
+}

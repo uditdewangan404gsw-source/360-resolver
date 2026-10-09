@@ -2,9 +2,10 @@
 
 import {
   AlarmClock, BookOpen, ChartNoAxesCombined, CirclePlus, Copy, Inbox,
-  LayoutDashboard, LifeBuoy, LogOut, Settings2, UsersRound, Landmark,
+  LayoutDashboard, LifeBuoy, LogOut, Settings2, UsersRound,
 } from 'lucide-react'
 import { navigation, type UserRole, type ViewKey } from './types'
+import { BrandLockup } from '@/components/brand-lockup'
 
 const icons = { LayoutDashboard, Inbox, CirclePlus, AlarmClock, Copy, ChartNoAxesCombined, BookOpen, UsersRound, Settings2 }
 
@@ -17,9 +18,8 @@ export function Sidebar({ active, role, openCount, onNavigate, onLogout }: {
 }) {
   return (
     <aside className="sidebar-shell flex h-full w-[248px] shrink-0 flex-col text-white">
-      <div className="flex h-[74px] items-center gap-3 border-b border-white/10 px-5">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-blue-500/20 text-blue-300"><Landmark className="size-[19px]" /></div>
-        <div><div className="text-[15px] font-semibold tracking-tight">360° Resolver</div><div className="mt-0.5 text-[10px] font-medium tracking-[0.14em] text-slate-400">COMPLAINT OPERATIONS</div></div>
+      <div className="flex h-[74px] items-center border-b border-white/10 px-4">
+        <BrandLockup size={40} inverse subtitle="COMPLAINT OPERATIONS" />
       </div>
       <nav aria-label="Primary navigation" className="px-3 pt-4">
         {navigation.filter((item) => role === 'Manager' || item.key !== 'team').map((item, index) => {
