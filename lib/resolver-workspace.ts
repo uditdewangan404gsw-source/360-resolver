@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { mapWorkspace, type ResolverWorkspace } from '@/components/resolver/data-mappers'
 import { logWorkspaceDiagnostic, WorkspaceLoadError, type WorkspaceStage } from '@/lib/workspace-diagnostic'
 
-const complaintColumns = 'id,complaint_number,subject,customer_ref,channel,category,severity,sentiment,assigned_to,status,minutes_to_sla,received_at,sla_due_at,resolved_at,message,summary,recommended_action,response_draft,triage_status,triage_source,triage_category,triage_product,triage_severity,triage_sentiment,triage_language,triage_summary,triage_recommended_action,triage_possible_fraud,triage_fraud_reason,triage_confidence,triage_explanation,triage_error,triage_updated_at,triage_reviewed_at'
+const complaintColumns = 'id,complaint_number,subject,customer_ref,channel,category,severity,sentiment,assigned_to,status,minutes_to_sla,received_at,sla_due_at,resolved_at,message,summary,recommended_action,response_draft'
 
 export async function loadResolverWorkspace(): Promise<ResolverWorkspace> {
   const supabase = await createClient()

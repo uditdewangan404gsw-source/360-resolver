@@ -2,118 +2,13 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { formatDatabaseTime, mapComplaintRows, type ComplaintRow, type DuplicateRow, type EventRow, type ProfileRow } from '@/components/resolver/data-mappers'
-import { defaultSlaRules, makeComplaint, type Channel, type Complaint, type ComplaintStatus, type ComplaintTriage, type NewComplaintInput, type Severity, type SlaRules } from '@/components/resolver/types'
+import { defaultSlaRules, makeComplaint, type Channel, type Complaint, type ComplaintStatus, type NewComplaintInput, type Severity, type SlaRules } from '@/components/resolver/types'
 import { mapSlaRules } from '@/components/resolver/data-mappers'
-import { classifyComplaint, classificationSchema } from '@/lib/complaint-ai'
-import { triageCorrectionSchema } from '@/lib/complaint-triage-schema'
-import { preserveSavedComplaintOnTriageFailure } from '@/lib/triage-workflow'
-import { logTriageDiagnostic } from '@/lib/triage-diagnostic'
 
 const channels: Channel[] = ['Email', 'Phone', 'Branch', 'Web form', 'Mobile app', 'Social']
 const severities: Severity[] = ['Critical', 'High', 'Medium', 'Low']
 const statuses: ComplaintStatus[] = ['Open', 'In progress', 'Pending customer', 'Resolved']
-const complaintColumns = 'id,complaint_number,subject,customer_ref,channel,category,severity,sentiment,assigned_to,status,minutes_to_sla,received_at,sla_due_at,resolved_at,message,summary,recommended_action,response_draft,triage_status,triage_source,triage_category,triage_product,triage_severity,triage_sentiment,triage_language,triage_summary,triage_recommended_action,triage_possible_fraud,triage_fraud_reason,triage_confidence,triage_explanation,triage_error,triage_updated_at,triage_reviewed_at'
-
-function mapTriage(value: Record<string, unknown>): ComplaintTriage {
-  return {
-    status: value.triage_status as ComplaintTriage['status'],
-    source: value.triage_source as ComplaintTriage['source'],
-    category: value.triage_category as string | null,
-    product: value.triage_product as string | null,
-    severity: value.triage_severity as ComplaintTriage['severity'],
-    sentiment: value.triage_sentiment as ComplaintTriage['sentiment'],
-    language: value.triage_language as string | null,
-    summary: value.triage_summary as string | null,
-    recommendedAction: value.triage_recommended_action as string | null,
-    possibleFraud: value.triage_possible_fraud as boolean | null,
-    fraudReason: value.triage_fraud_reason as string | null,
-    confidence: value.triage_confidence as number | null,
-    explanation: value.triage_explanation as string | null,
-    error: value.triage_error as string | null,
-    updatedAt: value.triage_updated_at as string | null,
-    reviewedAt: value.triage_reviewed_at as string | null,
-  }
-}
-
-async function processComplaintTriage(supabase: Awaited<ReturnType<typeof createClient>>, complaintNumber: string, actorId: string) {
-  const { data: complaint, error: lookupError } = await supabase.from('complaints')
-    .select('id,complaint_number,subject,message,category,severity,triage_status,triage_updated_at')
-    .eq('complaint_number', complaintNumber).maybeSingle()
-  if (lookupError) {
-    logTriageDiagnostic('complaint-lookup', lookupError)
-    throw new Error('Could not load this complaint for triage. Please retry.')
-  }
-  if (!complaint) {
-    logTriageDiagnostic('complaint-lookup', undefined, 'not-found')
-    return null
-  }
-  const staleProcessing = complaint.triage_status === 'processing' && complaint.triage_updated_at
-    && Date.now() - new Date(complaint.triage_updated_at).getTime() > 60_000
-  if (!['pending', 'failed'].includes(complaint.triage_status) && !staleProcessing) return null
-
-  let claimQuery = supabase.from('complaints')
-    .update({ triage_status: 'processing', triage_error: null, triage_updated_at: new Date().toISOString() })
-    .eq('id', complaint.id).eq('triage_status', complaint.triage_status)
-  if (staleProcessing) claimQuery = claimQuery.eq('triage_updated_at', complaint.triage_updated_at)
-  const { data: claimed, error: claimError } = await claimQuery
-    .select('id').maybeSingle()
-  if (claimError) {
-    logTriageDiagnostic('processing-claim', claimError)
-    throw new Error('Could not start triage for this complaint. Please retry.')
-  }
-  if (!claimed) {
-    logTriageDiagnostic('processing-claim', undefined, 'not-claimed')
-    return null
-  }
-
-  let stage: 'classification' | 'result-persist' | 'activity-event' = 'classification'
-  try {
-    const { result, source } = await classifyComplaint({
-      subject: complaint.subject,
-      message: complaint.message,
-      category: complaint.category,
-      severity: complaint.severity,
-    })
-    const valid = classificationSchema.parse(result)
-    const timestamp = new Date().toISOString()
-    stage = 'result-persist'
-    const { error } = await supabase.from('complaints').update({
-      triage_status: 'complete', triage_source: source,
-      triage_category: valid.category, triage_product: valid.product,
-      triage_severity: valid.severity, triage_sentiment: valid.sentiment,
-      triage_language: valid.language, triage_summary: valid.summary,
-      triage_recommended_action: valid.recommendedAction,
-      triage_possible_fraud: valid.possibleFraud, triage_fraud_reason: valid.fraudReason,
-      triage_confidence: valid.confidence, triage_explanation: valid.explanation,
-      triage_error: null, triage_updated_at: timestamp,
-    }).eq('id', complaint.id)
-    if (error) throw error
-    stage = 'activity-event'
-    const { error: activityError } = await supabase.from('complaint_events').insert({
-      complaint_id: complaint.id, actor_id: actorId, event_type: 'system',
-      title: source === 'ai' ? 'AI triage completed' : 'Fallback triage completed',
-      detail: source === 'ai'
-        ? 'Structured suggestions are ready for agent review.'
-        : 'Deterministic fallback suggestions are ready; no AI provider was configured.',
-    })
-    if (activityError) throw activityError
-    return mapTriage({ ...valid, triage_status: 'complete', triage_source: source, triage_category: valid.category,
-      triage_product: valid.product, triage_severity: valid.severity, triage_sentiment: valid.sentiment,
-      triage_language: valid.language, triage_summary: valid.summary, triage_recommended_action: valid.recommendedAction,
-      triage_possible_fraud: valid.possibleFraud, triage_fraud_reason: valid.fraudReason,
-      triage_confidence: valid.confidence, triage_explanation: valid.explanation, triage_error: null, triage_updated_at: timestamp, triage_reviewed_at: null })
-  } catch (error) {
-    // Keep provider and complaint details private; the development logger emits only safe metadata.
-    logTriageDiagnostic(stage, error)
-    const errorMessage = 'Triage could not be completed. The complaint is saved; please retry.'
-    const { error: persistError } = await supabase.from('complaints').update({ triage_status: 'failed', triage_error: errorMessage, triage_updated_at: new Date().toISOString() }).eq('id', complaint.id)
-    if (persistError) logTriageDiagnostic('failure-persist', persistError)
-    return mapTriage({ triage_status: 'failed', triage_source: null, triage_category: null, triage_product: null,
-      triage_severity: null, triage_sentiment: null, triage_language: null, triage_summary: null,
-      triage_recommended_action: null, triage_possible_fraud: null, triage_fraud_reason: null,
-      triage_confidence: null, triage_explanation: null, triage_error: errorMessage, triage_updated_at: new Date().toISOString(), triage_reviewed_at: null })
-  }
-}
+const complaintColumns = 'id,complaint_number,subject,customer_ref,channel,category,severity,sentiment,assigned_to,status,minutes_to_sla,received_at,sla_due_at,resolved_at,message,summary,recommended_action,response_draft'
 
 async function requireStaff() {
   const supabase = await createClient()
@@ -198,62 +93,16 @@ export async function createComplaintAction(input: NewComplaintInput): Promise<C
   }).select('complaint_id,event_type,title,detail,created_at').maybeSingle()
 
   const profileRows = await supabase.from('profiles').select('id,display_name,role').eq('id', user.id)
-  const afterSave = await preserveSavedComplaintOnTriageFailure(row, () => processComplaintTriage(supabase, row.complaint_number, user.id))
-  const triage = afterSave.triage
   const complaintRows = [row as ComplaintRow]
   const eventRows = event ? [event as EventRow] : []
   const profiles = (profileRows.data ?? []) as ProfileRow[]
   const mapped = mapComplaintRows(complaintRows, profiles, eventRows, [], slaRules)[0]
-  const events = triage?.status === 'complete' ? [...mapped.events, {
-    time: formatDatabaseTime(new Date().toISOString()),
-    title: triage.source === 'ai' ? 'AI triage completed' : 'Fallback triage completed',
-    detail: triage.source === 'ai' ? 'Structured suggestions are ready for agent review.' : 'Deterministic fallback suggestions are ready; no AI provider was configured.',
-    type: 'system' as const,
-  }] : mapped.events
-  return { ...mapped, events, ...(triage ? { triage } : {}), responseDraft: draft.responseDraft.replace(draft.id, row.complaint_number) }
-}
-
-export async function retryComplaintTriageAction(complaintNumber: string) {
-  if (typeof complaintNumber !== 'string' || !/^CMP-\d{5}$/.test(complaintNumber)) throw new Error('Invalid complaint reference.')
-  const { supabase, user } = await requireStaff()
-  const result = await processComplaintTriage(supabase, complaintNumber, user.id)
-  if (!result) throw new Error('Triage is already processing or has already completed.')
-  return result
-}
-
-export async function correctComplaintTriageAction(complaintNumber: string, input: unknown) {
-  if (typeof complaintNumber !== 'string' || !/^CMP-\d{5}$/.test(complaintNumber)) throw new Error('Invalid complaint reference.')
-  const parsed = triageCorrectionSchema.safeParse(input)
-  if (!parsed.success) throw new Error('Review values are invalid. Check each field and try again.')
-  const { supabase, user } = await requireStaff()
-  const { data: complaint, error: lookupError } = await supabase.from('complaints').select('id,triage_source')
-    .eq('complaint_number', complaintNumber).maybeSingle()
-  if (lookupError || !complaint) throw new Error('This complaint could not be found or you do not have access to it.')
-  const value = parsed.data
-  const reviewedAt = new Date().toISOString()
-  const { error } = await supabase.from('complaints').update({
-    category: value.category, severity: value.severity, sentiment: value.sentiment,
-    summary: value.summary, recommended_action: value.recommendedAction,
-    triage_category: value.category, triage_product: value.product,
-    triage_severity: value.severity, triage_sentiment: value.sentiment,
-    triage_language: value.language, triage_summary: value.summary,
-    triage_recommended_action: value.recommendedAction,
-    triage_possible_fraud: value.possibleFraud, triage_fraud_reason: value.fraudReason,
-    triage_confidence: value.confidence, triage_explanation: value.explanation,
-    triage_reviewed_at: reviewedAt, triage_updated_at: reviewedAt,
-  }).eq('id', complaint.id)
-  if (error) throw new Error('The corrected triage could not be saved.')
-  const { error: eventError } = await supabase.from('complaint_events').insert({
-    complaint_id: complaint.id, actor_id: user.id, event_type: 'agent',
-    title: 'Triage suggestions corrected', detail: 'An agent reviewed and confirmed the complaint classification.',
-  })
-  if (eventError) throw new Error('The correction was saved, but its activity entry could not be added.')
-  return { ...value, status: 'complete', source: complaint.triage_source, error: null, updatedAt: reviewedAt, reviewedAt } as ComplaintTriage
+  return { ...mapped, responseDraft: draft.responseDraft.replace(draft.id, row.complaint_number) }
 }
 
 export async function updateComplaintAction(id: string, changes: Partial<Complaint>): Promise<Partial<Complaint>> {
   if (typeof id !== 'string' || !/^CMP-\d{5}$/.test(id)) throw new Error('Invalid complaint reference.')
-  const { supabase, user } = await requireStaff()
+  const { supabase } = await requireStaff()
   const { data: current, error: currentError } = await supabase.from('complaints')
     .select('id,assigned_to,created_by,status,severity,minutes_to_sla,response_draft')
     .eq('complaint_number', id).single()
@@ -290,22 +139,17 @@ export async function updateComplaintAction(id: string, changes: Partial<Complai
     }
   }
 
-  const { error: updateError } = await supabase.from('complaints').update(patch).eq('id', current.id)
-  if (updateError) throw new Error('The complaint update was denied or could not be saved.')
+  const { data: updatedComplaint, error: updateError } = await supabase.from('complaints')
+    .update(patch).eq('id', current.id).select('id').maybeSingle()
+  if (updateError || !updatedComplaint) {
+    throw new Error('You do not have permission to update this complaint. Ask a manager to assign it to you.')
+  }
 
   const requestedEvent = Array.isArray(changes.events) ? changes.events.at(-1) : undefined
   if (requestedEvent) {
     if (typeof requestedEvent.title !== 'string' || requestedEvent.title.length > 120 || typeof requestedEvent.detail !== 'string' || requestedEvent.detail.length > 1000) {
       throw new Error('Invalid activity entry.')
     }
-    const { error: eventError } = await supabase.from('complaint_events').insert({
-      complaint_id: current.id,
-      actor_id: user.id,
-      event_type: 'agent',
-      title: requestedEvent.title,
-      detail: requestedEvent.detail,
-    })
-    if (eventError) throw new Error('The complaint was updated, but its activity entry could not be saved.')
     result.events = [...(changes.events ?? [])].map((event) => ({ ...event, type: event.type === 'customer' ? 'customer' : event.type === 'system' ? 'system' : 'agent' }))
     result.events[result.events.length - 1] = { ...result.events[result.events.length - 1], type: 'agent', time: formatDatabaseTime(new Date().toISOString()) }
   }

@@ -1,75 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ArrowUpRight, BookOpen, Check, CheckCheck, ChevronDown, CircleAlert, Clock3, Copy, FileText, Forward, History, MessageSquareText, MoreHorizontal, RefreshCw, Sparkles, UserRound, UsersRound } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, BookOpen, Check, CheckCheck, ChevronDown, Clock3, Copy, FileText, Forward, History, MessageSquareText, MoreHorizontal, RefreshCw, UserRound, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { loadCustomerConversationAction, publishCustomerReplyAction } from '@/app/actions/resolver'
-import { findDuplicateCandidates, formatSla, type Complaint, type ComplaintStatus, type ComplaintTriage, type TeamMember } from './types'
+import { findDuplicateCandidates, formatSla, type Complaint, type ComplaintStatus, type TeamMember } from './types'
 
 const severityClass: Record<string, string> = { Critical: 'severity-critical', High: 'severity-high', Medium: 'severity-medium', Low: 'severity-low' }
 
-type TriageCorrection = Pick<ComplaintTriage, 'category' | 'product' | 'severity' | 'sentiment' | 'language' | 'summary' | 'recommendedAction' | 'possibleFraud' | 'fraudReason' | 'confidence' | 'explanation'>
-
-function TriagePanel({ complaint, onRetry, onCorrect }: { complaint: Complaint; onRetry: (id: string) => Promise<ComplaintTriage>; onCorrect: (id: string, value: TriageCorrection) => Promise<ComplaintTriage> }) {
-  const [value, setValue] = useState<TriageCorrection>(() => ({
-    category: complaint.triage.category ?? complaint.category,
-    product: complaint.triage.product ?? 'Unspecified',
-    severity: complaint.triage.severity ?? complaint.severity,
-    sentiment: complaint.triage.sentiment ?? complaint.sentiment,
-    language: complaint.triage.language ?? '',
-    summary: complaint.triage.summary ?? complaint.summary,
-    recommendedAction: complaint.triage.recommendedAction ?? complaint.recommendedAction,
-    possibleFraud: complaint.triage.possibleFraud ?? false,
-    fraudReason: complaint.triage.fraudReason ?? '',
-    confidence: complaint.triage.confidence ?? 0,
-    explanation: complaint.triage.explanation ?? '',
-  }))
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    setValue({
-      category: complaint.triage.category ?? complaint.category, product: complaint.triage.product ?? 'Unspecified',
-      severity: complaint.triage.severity ?? complaint.severity, sentiment: complaint.triage.sentiment ?? complaint.sentiment,
-      language: complaint.triage.language ?? '', summary: complaint.triage.summary ?? complaint.summary,
-      recommendedAction: complaint.triage.recommendedAction ?? complaint.recommendedAction,
-      possibleFraud: complaint.triage.possibleFraud ?? false, fraudReason: complaint.triage.fraudReason ?? '',
-      confidence: complaint.triage.confidence ?? 0, explanation: complaint.triage.explanation ?? '',
-    })
-  }, [complaint.id, complaint.triage, complaint.category, complaint.severity, complaint.sentiment, complaint.summary, complaint.recommendedAction])
-  const update = <K extends keyof TriageCorrection>(key: K, next: TriageCorrection[K]) => setValue((current) => ({ ...current, [key]: next }))
-  const run = async (operation: () => Promise<ComplaintTriage>) => {
-    setWorking(true); setError('')
-    try { await operation() } catch (cause) { setError(cause instanceof Error ? cause.message : 'The triage update failed.') }
-    finally { setWorking(false) }
-  }
-  const triage = complaint.triage
-  const sourceLabel = triage.source === 'ai' ? 'AI suggestion' : triage.source === 'fallback' ? 'Deterministic fallback · not AI-generated' : 'Not available'
-  const uncertain = (triage.confidence ?? 0) < 0.65
-  const staleProcessing = triage.status === 'processing' && Boolean(triage.updatedAt) && Date.now() - new Date(triage.updatedAt as string).getTime() > 60_000
-  return <section className="rounded-lg border border-blue-100 bg-[#f8faff]">
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-100/80 px-5 py-3"><div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800"><Sparkles className="size-4 text-blue-600" />Complaint triage</div><span className="rounded bg-blue-100 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-blue-800">{sourceLabel}</span></div>
-    {triage.status === 'processing' || triage.status === 'pending' ? <div role="status" className="flex flex-wrap items-center justify-between gap-3 px-5 py-5 text-[11px] text-slate-600"><span>{staleProcessing ? 'Triage appears stuck. The complaint is saved.' : 'Triage is processing. The complaint has been saved.'}</span>{staleProcessing && <Button variant="outline" disabled={working} onClick={() => void run(() => onRetry(complaint.id))} className="h-8 border-slate-200 px-3 text-[10px]"><RefreshCw data-icon="inline-start" />{working ? 'Retrying…' : 'Retry triage'}</Button>}</div> : triage.status === 'failed' ? <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"><div><div className="text-[11px] font-semibold text-rose-800">Triage processing failed</div><p className="mt-1 text-[10px] text-slate-600">{triage.error ?? 'Suggestions are unavailable. Your complaint is saved.'}</p>{error && <p role="alert" className="mt-2 text-[10px] text-rose-800">{error}</p>}</div><Button variant="outline" disabled={working} onClick={() => void run(() => onRetry(complaint.id))} className="h-8 border-slate-200 px-3 text-[10px]"><RefreshCw data-icon="inline-start" />{working ? 'Retrying…' : 'Retry triage'}</Button></div> : <>
-      <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-[10px]"><span className="rounded bg-white px-2 py-1 text-slate-600">Confidence {Math.round((triage.confidence ?? 0) * 100)}%</span>{uncertain && <span className="flex items-center gap-1 rounded bg-amber-100 px-2 py-1 font-medium text-amber-900"><CircleAlert className="size-3" />Low confidence · human review required</span>}{triage.reviewedAt && <span className="rounded bg-emerald-100 px-2 py-1 font-medium text-emerald-800">Agent confirmed</span>}</div>
-      {triage.possibleFraud && <div className="mx-5 mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-950"><strong>Review flag only; not a fraud determination.</strong> {triage.fraudReason}</div>}
-      <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
-        <label className="field-block"><span>Suggested category</span><select value={value.category ?? ''} onChange={(e) => update('category', e.target.value)}>{['Card payments', 'Digital banking', 'Fees & charges', 'Disputes', 'Other'].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="field-block"><span>Product</span><input maxLength={100} value={value.product ?? ''} onChange={(e) => update('product', e.target.value)} /></label>
-        <label className="field-block"><span>Suggested severity</span><select value={value.severity ?? 'Medium'} onChange={(e) => update('severity', e.target.value as TriageCorrection['severity'])}>{['Critical', 'High', 'Medium', 'Low'].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="field-block"><span>Suggested sentiment</span><select value={value.sentiment ?? 'Neutral'} onChange={(e) => update('sentiment', e.target.value as TriageCorrection['sentiment'])}>{['Frustrated', 'Negative', 'Neutral', 'Positive'].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="field-block"><span>Language</span><input maxLength={80} value={value.language ?? ''} onChange={(e) => update('language', e.target.value)} /></label>
-        <label className="field-block sm:col-span-2"><span>Concise summary</span><textarea maxLength={500} rows={2} value={value.summary ?? ''} onChange={(e) => update('summary', e.target.value)} /></label>
-        <label className="field-block sm:col-span-2"><span>Recommended next action</span><textarea maxLength={500} rows={2} value={value.recommendedAction ?? ''} onChange={(e) => update('recommendedAction', e.target.value)} /></label>
-        <label className="flex items-center gap-2 text-[10px] text-slate-700"><input type="checkbox" checked={value.possibleFraud ?? false} onChange={(e) => update('possibleFraud', e.target.checked)} className="accent-amber-600" />Potential fraud review flag</label>
-        <label className="field-block"><span>Flag explanation</span><input maxLength={300} value={value.fraudReason ?? ''} onChange={(e) => update('fraudReason', e.target.value)} /></label>
-      </div>
-      <div className="mx-5 border-t border-blue-100/80 py-3"><div className="field-eyebrow">WHY THIS WAS SUGGESTED</div><p className="mt-1 text-[10px] text-slate-600">{triage.explanation}</p><div className="mt-3 grid gap-2 text-[10px] text-slate-600 sm:grid-cols-2"><span>Current category: <strong>{complaint.category}</strong></span><span>Current severity: <strong>{complaint.severity}</strong></span><span>Current sentiment: <strong>{complaint.sentiment}</strong></span><span>Current summary: <strong>{complaint.summary}</strong></span></div></div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-100/80 px-5 py-3"><p className="text-[9px] text-slate-500">Suggestions do not change the complaint until an agent confirms them. The fraud flag is not a finding.</p><Button disabled={working} onClick={() => void run(() => onCorrect(complaint.id, value))} className="h-8 bg-[#2459c5] px-3 text-[10px] disabled:bg-slate-400">{working ? 'Saving…' : triage.reviewedAt ? 'Save correction' : 'Confirm or correct'}</Button></div>
-      {error && <p role="alert" className="px-5 pb-3 text-[10px] text-rose-800">{error}</p>}
-    </>}
-  </section>
-}
-
-export function ComplaintDetailView({ complaint, complaints, team, decisions, onBack, onUpdate, onDuplicateDecision, onRetryTriage, onCorrectTriage }: { complaint: Complaint; complaints: Complaint[]; team: TeamMember[]; decisions: Record<string, 'confirmed' | 'rejected'>; onBack: () => void; onUpdate: (id: string, changes: Partial<Complaint>) => void; onDuplicateDecision: (key: string, decision: 'confirmed' | 'rejected') => void; onRetryTriage: (id: string) => Promise<ComplaintTriage>; onCorrectTriage: (id: string, value: TriageCorrection) => Promise<ComplaintTriage> }) {
+export function ComplaintDetailView({ complaint, complaints, team, decisions, onBack, onUpdate, onDuplicateDecision }: { complaint: Complaint; complaints: Complaint[]; team: TeamMember[]; decisions: Record<string, 'confirmed' | 'rejected'>; onBack: () => void; onUpdate: (id: string, changes: Partial<Complaint>) => void; onDuplicateDecision: (key: string, decision: 'confirmed' | 'rejected') => void }) {
   const [draft, setDraft] = useState(complaint.responseDraft)
   const [customerConversation, setCustomerConversation] = useState<{ enabled: boolean; reason?: 'not-linked' | 'load-error'; messages: { id: string; sender_kind: string; body: string; created_at: string }[] } | null>(null)
   const [customerReply, setCustomerReply] = useState('')
@@ -79,6 +18,9 @@ export function ComplaintDetailView({ complaint, complaints, team, decisions, on
   const [draftSendSuccess, setDraftSendSuccess] = useState('')
   const [draftSendBusy, setDraftSendBusy] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionMessage, setActionMessage] = useState('')
   const linkedCandidates = complaints.filter((item) => complaint.duplicateIds.includes(item.id) || item.duplicateIds.includes(complaint.id))
   const suggestedCandidates = findDuplicateCandidates(complaints)
     .filter((pair) => (pair.first.id === complaint.id || pair.second.id === complaint.id) && decisions[pair.key] !== 'rejected')
@@ -88,16 +30,48 @@ export function ComplaintDetailView({ complaint, complaints, team, decisions, on
   useEffect(() => { let active = true; setCustomerConversation(null); void loadCustomerConversationAction(complaint.id).then((value) => { if (active) setCustomerConversation(value) }).catch(() => { if (active) setCustomerConversation({ enabled: false, reason: 'load-error', messages: [] }) }); return () => { active = false } }, [complaint.id])
   const sendCustomerReply = async () => { setCustomerReplyBusy(true); setCustomerReplyError(''); try { const message = await publishCustomerReplyAction(complaint.id, customerReply); setCustomerConversation((current) => current ? { ...current, messages: [...current.messages, message] } : current); setCustomerReply('') } catch (error) { setCustomerReplyError(error instanceof Error ? error.message : 'The reply could not be sent.') } finally { setCustomerReplyBusy(false) } }
   const approveAndSendDraft = async () => { setDraftSendBusy(true); setDraftSendError(''); setDraftSendSuccess(''); try { const message = await publishCustomerReplyAction(complaint.id, draft); setCustomerConversation((current) => current ? { ...current, messages: [...current.messages, message] } : current); setDraftSendSuccess('Your approved response was sent to the customer portal.') } catch (error) { setDraftSendError(error instanceof Error ? error.message : 'The response could not be sent.'); } finally { setDraftSendBusy(false) } }
-  const assign = (name: string) => onUpdate(complaint.id, { assignedTo: name, status: complaint.status === 'Open' ? 'In progress' : complaint.status, events: [...complaint.events, { time: 'Just now', title: `Assigned to ${name}`, detail: 'Updated by current user', type: 'agent' }] })
-  const escalate = () => onUpdate(complaint.id, { severity: 'Critical', status: 'In progress', events: [...complaint.events, { time: 'Just now', title: 'Escalated to manager', detail: 'Priority raised; the original SLA due time remains unchanged', type: 'agent' }] })
+  const updateAction = async (changes: Partial<Complaint>, success: string) => {
+    setActionBusy(true)
+    setActionMessage('')
+    try {
+      await onUpdate(complaint.id, changes)
+      setActionMessage(success)
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : 'The complaint could not be updated.')
+    } finally {
+      setActionBusy(false)
+    }
+  }
+  const assign = (name: string) => {
+    if (!name || name === complaint.assignedTo) return
+    void updateAction({ assignedTo: name, status: complaint.status === 'Open' ? 'In progress' : complaint.status, events: [...complaint.events, { time: 'Just now', title: `Assigned to ${name}`, detail: 'Updated by current user', type: 'agent' }] }, `Assigned to ${name}.`)
+  }
+  const escalate = () => {
+    if (complaint.severity === 'Critical') {
+      setActionMessage('This complaint is already at Critical priority.')
+      return
+    }
+    void updateAction({ severity: 'Critical', status: 'In progress', events: [...complaint.events, { time: 'Just now', title: 'Escalated to manager', detail: 'Priority raised; the original SLA due time remains unchanged', type: 'agent' }] }, 'Complaint escalated to Critical priority.')
+  }
+  const changeResolution = () => {
+    const status = complaint.status === 'Resolved' ? 'In progress' : 'Resolved'
+    setActionsOpen(false)
+    void updateAction({ status, events: [...complaint.events, { time: 'Just now', title: status === 'Resolved' ? 'Complaint resolved' : 'Complaint reopened', detail: 'Updated by current user', type: 'agent' }] }, status === 'Resolved' ? 'Complaint marked resolved.' : 'Complaint reopened.')
+  }
   return <div className="flex flex-col gap-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><Button variant="outline" size="icon-sm" onClick={onBack} aria-label="Back to inbox" className="border-slate-200"><ArrowLeft /></Button><div><div className="flex flex-wrap items-center gap-2"><h1 className="text-[19px] font-semibold tracking-[-0.03em] text-slate-950">{complaint.subject}</h1><span className={`severity-badge ${severityClass[complaint.severity]}`}>{complaint.severity}</span></div><div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-slate-500"><span className="font-mono">{complaint.id}</span><span>·</span><span>{complaint.received}</span><span>·</span><span>{complaint.channel}</span></div></div></div>
-      <div className="flex flex-wrap items-center gap-2"><Button variant="outline" onClick={escalate} className="h-8 rounded-md border-slate-200 px-2.5 text-[10px]"><ArrowUpRight data-icon="inline-start" />Escalate</Button><label className="relative"><span className="sr-only">Assign complaint to</span><select value={complaint.assignedTo} onChange={(e) => assign(e.target.value)} className="h-8 appearance-none rounded-md border border-slate-200 bg-white pl-2.5 pr-7 text-[10px] font-medium text-slate-700 outline-none focus:border-blue-400"><option>Unassigned</option>{team.map((member) => <option key={member.name}>{member.name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-slate-400" /></label><Button variant="outline" size="icon-sm" aria-label="More complaint actions" className="border-slate-200"><MoreHorizontal /></Button></div>
+      <div className="flex min-w-0 flex-col items-end gap-1">
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" disabled={actionBusy || complaint.severity === 'Critical'} onClick={escalate} className="h-8 w-[92px] shrink-0 justify-center rounded-md border-slate-200 px-2 text-[10px]"><ArrowUpRight data-icon="inline-start" />{actionBusy ? 'Saving...' : 'Escalate'}</Button>
+          <label className="relative block w-40 shrink-0"><span className="sr-only">Assign complaint to</span><select disabled={actionBusy} value={complaint.assignedTo} onChange={(e) => assign(e.target.value)} className="h-8 w-full appearance-none rounded-md border border-slate-200 bg-white pl-2.5 pr-7 text-[10px] font-medium text-slate-700 outline-none focus:border-blue-400 disabled:opacity-50"><option>Unassigned</option>{team.map((member) => <option key={member.name}>{member.name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-slate-400" /></label>
+          <div className="relative shrink-0"><Button type="button" variant="outline" size="icon-sm" aria-label="More complaint actions" aria-expanded={actionsOpen} onClick={() => setActionsOpen((open) => !open)} className="border-slate-200"><MoreHorizontal /></Button>{actionsOpen && <div role="menu" aria-label="Complaint actions" className="absolute right-0 z-20 mt-1 min-w-44 rounded-md border border-slate-200 bg-white p-1 shadow-lg"><button type="button" role="menuitem" onClick={() => { setActionsOpen(false); void navigator.clipboard.writeText(complaint.id).then(() => setActionMessage('Complaint reference copied.')).catch(() => setActionMessage('Could not copy the complaint reference.')) }} className="w-full rounded px-3 py-2 text-left text-[11px] text-slate-700 hover:bg-slate-50">Copy complaint reference</button><button type="button" role="menuitem" disabled={actionBusy} onClick={changeResolution} className="w-full rounded px-3 py-2 text-left text-[11px] text-slate-700 hover:bg-slate-50 disabled:opacity-50">{complaint.status === 'Resolved' ? 'Reopen complaint' : 'Mark as resolved'}</button></div>}</div>
+        </div>
+        <span role="status" aria-live="polite" className="min-h-4 max-w-full text-right text-[10px] text-slate-600">{actionMessage}</span>
+      </div>
     </div>
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
       <div className="flex flex-col gap-4">
         <section className="panel-card"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5"><div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800"><MessageSquareText className="size-4 text-slate-500" />Original customer message</div><button aria-label="Copy complaint message" className="text-slate-400 hover:text-slate-700"><Copy className="size-3.5" /></button></div><div className="px-5 py-4"><div className="mb-3 flex items-center gap-2"><div className="mini-avatar bg-slate-100 text-slate-700">{complaint.customerRef.slice(-2)}</div><div><div className="text-[11px] font-medium text-slate-800">Customer <span className="font-mono text-[10px] text-slate-400">{complaint.customerRef}</span></div><div className="text-[10px] text-slate-400">via {complaint.channel} · {complaint.received}</div></div></div><p className="max-w-3xl text-[12px] leading-[1.8] text-slate-700">{complaint.message}</p></div></section>
-        <TriagePanel complaint={complaint} onRetry={onRetryTriage} onCorrect={onCorrectTriage} />
         <section className="panel-card"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3"><div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800"><FileText className="size-4 text-slate-500" />AI response draft</div><div className="flex items-center gap-2"><Button variant="outline" onClick={regenerate} className="h-7 rounded-md border-slate-200 px-2 text-[10px]"><RefreshCw data-icon="inline-start" />Regenerate draft</Button><Button variant="outline" onClick={() => setEditing((value) => !value)} className="h-7 rounded-md border-slate-200 px-2 text-[10px]">{editing ? 'Done editing' : 'Edit draft'}</Button></div></div><div className="px-5 py-4"><textarea value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={!editing} aria-label="AI response draft" className={`min-h-[108px] w-full resize-y rounded-md border px-3 py-2.5 text-[11px] leading-[1.8] text-slate-700 outline-none ${editing ? 'border-blue-300 bg-white focus:ring-2 focus:ring-blue-100' : 'border-slate-100 bg-slate-50/70'}`} /><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><span className="text-[10px] text-slate-500">Review this draft. Clicking send is your approval and shares it in the customer portal.</span><Button onClick={() => void approveAndSendDraft()} disabled={draftSendBusy || !draft.trim() || !customerConversation?.enabled} className="h-8 rounded-md bg-[#2459c5] px-3 text-[10px] hover:bg-blue-700 disabled:bg-slate-400"><Check data-icon="inline-start" />{draftSendBusy ? 'Sending…' : 'Approve & send to customer'}</Button></div>{customerConversation?.enabled === false && <p role="status" className="mt-2 text-[10px] text-amber-700">{customerConversation.reason === 'not-linked' ? 'This complaint is not linked to a customer portal account, so it cannot be sent through the portal.' : 'We could not verify the customer portal link. Refresh the page and try again.'}</p>}{customerConversation === null && <p className="mt-2 text-[10px] text-slate-500">Checking for a linked customer account…</p>}{draftSendError && <p role="alert" className="mt-2 text-[10px] text-rose-700">{draftSendError}</p>}{draftSendSuccess && <p role="status" className="mt-2 text-[10px] text-emerald-700">{draftSendSuccess}</p>}</div></section>
         {candidates.length > 0 && <section className="panel-card"><div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3 text-[12px] font-semibold text-slate-800"><Copy className="size-4 text-slate-500" />Potentially related complaints <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-800">{candidates.length}</span></div><div className="divide-y divide-slate-100">{candidates.map((candidate) => <div key={candidate.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"><div><div className="text-[11px] font-medium text-slate-800">{candidate.subject}</div><div className="mt-1 text-[10px] text-slate-400">{candidate.id} · {candidate.category} · {candidate.customerRef === complaint.customerRef ? 'Same customer' : 'Possible match'}</div></div><div className="flex gap-2"><Button variant="outline" onClick={() => onDuplicateDecision([complaint.id, candidate.id].sort().join(':'), 'rejected')} className="h-7 border-slate-200 px-2 text-[10px]">Reject match</Button><Button variant="outline" onClick={() => onDuplicateDecision([complaint.id, candidate.id].sort().join(':'), 'confirmed')} className="h-7 border-slate-200 px-2 text-[10px]"><CheckCheck data-icon="inline-start" />Confirm</Button></div></div>)}</div><div className="border-t border-slate-100 px-5 py-2.5 text-[10px] text-slate-400">Confirmation links cases only. Records are never merged automatically.</div></section>}
       </div>
