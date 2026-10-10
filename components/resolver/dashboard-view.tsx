@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Clock3, Ellipsis, Plus, Sparkles, UsersRound, CircleAlert, CheckCircle2, ChevronRight } from 'lucide-react'
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Clock3, Ellipsis, Plus, UsersRound, CircleAlert, CheckCircle2, ChevronRight } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { buildDailyComplaintVolume, formatSla, isAtRisk, type Complaint, type SlaRules } from './types'
@@ -62,7 +62,6 @@ export function DashboardView({ complaints, slaRules, onNavigate, onMetricFilter
       </Panel>
     </div>
     <div className="grid gap-4 md:grid-cols-2">
-      <div className="flex items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3"><div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-white text-blue-700"><Sparkles className="size-4" /></div><div className="min-w-0 flex-1"><div className="text-[11px] font-semibold text-slate-800">AI triage is simulated</div><div className="mt-0.5 text-[10px] text-slate-500">Classification and drafts are demo suggestions for agent review.</div></div><span className="rounded bg-blue-100 px-2 py-1 text-[9px] font-semibold tracking-wide text-blue-700">DEMO</span></div>
       <button onClick={() => onNavigate('inbox')} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-blue-200"><div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700"><UsersRound className="size-4" /></div><div className="min-w-0 flex-1"><div className="text-[11px] font-semibold text-slate-800">Unassigned cases <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-800">{unassigned.length}</span></div><div className="mt-0.5 truncate text-[10px] text-slate-500">{unassigned.map((item) => item.id).join(' · ') || 'All cases have an owner'}</div></div><CircleAlert className="size-4 shrink-0 text-slate-400" /></button>
     </div>
   </div>

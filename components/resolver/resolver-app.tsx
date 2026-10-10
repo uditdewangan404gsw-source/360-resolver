@@ -6,7 +6,7 @@ import { Bell, ChevronDown, CircleHelp, Search, ShieldCheck } from 'lucide-react
 import { Button } from '@/components/ui/button'
 import { BrandLockup } from '@/components/brand-lockup'
 import { createClient } from '@/lib/supabase/client'
-import { correctComplaintTriageAction, createComplaintAction, retryComplaintTriageAction, saveDuplicateDecisionAction, saveSlaRulesAction, updateComplaintAction } from '@/app/actions/resolver'
+import { createComplaintAction, saveDuplicateDecisionAction, saveSlaRulesAction, updateComplaintAction } from '@/app/actions/resolver'
 import { AuthScreen } from './auth-screen'
 import type { ResolverWorkspace } from './data-mappers'
 import { ComplaintDetailView } from './complaint-detail-view'
@@ -70,6 +70,7 @@ export function ResolverApp({
       setComplaints((current) => current.map((item) => item.id === id ? { ...item, ...savedChanges } : item))
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : 'The complaint could not be saved.')
+      throw error
     }
   }
   const saveSlaRules = async (rules: SlaRules) => {
@@ -92,21 +93,6 @@ export function ResolverApp({
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : 'The duplicate decision could not be saved.')
     }
-  }
-  const retryTriage = async (id: string) => {
-    const triage = await retryComplaintTriageAction(id)
-    setComplaints((current) => current.map((item) => item.id === id ? { ...item, triage } : item))
-    return triage
-  }
-  const correctTriage = async (id: string, value: Parameters<typeof correctComplaintTriageAction>[1]) => {
-    const triage = await correctComplaintTriageAction(id, value)
-    setComplaints((current) => current.map((item) => item.id === id ? {
-      ...item, triage, category: triage.category ?? item.category, severity: triage.severity ?? item.severity,
-      sentiment: triage.sentiment ?? item.sentiment, summary: triage.summary ?? item.summary,
-      recommendedAction: triage.recommendedAction ?? item.recommendedAction,
-      events: [...item.events, { time: 'Just now', title: 'Triage suggestions corrected', detail: 'An agent reviewed and confirmed the complaint classification.', type: 'agent' }],
-    } : item))
-    return triage
   }
   const selected = liveComplaints.find((item) => item.id === detailId)
   const activeView = view
@@ -147,7 +133,7 @@ export function ResolverApp({
         <div className="flex items-center gap-2.5"><form onSubmit={submitSearch} className="global-search"><Search className="size-3.5 text-slate-400" /><input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} placeholder="Search cases..." aria-label="Global complaint search" /><kbd>⌘ K</kbd></form><div className="relative"><button className={`topbar-icon ${showNotifications ? 'bg-slate-100' : ''}`} onClick={() => { setShowNotifications(!showNotifications); setShowProfile(false) }} aria-label="Notifications"><Bell className="size-[17px]" /><i className="notification-dot" /></button>{showNotifications && <div className="topbar-popover right-0"><div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-3"><span className="text-[11px] font-semibold text-slate-800">Notifications</span><span className="rounded bg-amber-50 px-1.5 py-0.5 text-[9px] text-amber-700">2 attention</span></div><button onClick={() => { setShowNotifications(false); navigate('sla') }} className="flex w-full gap-2.5 p-3.5 text-left hover:bg-slate-50"><span className="mt-0.5 size-2 rounded-full bg-rose-500" /><span><span className="block text-[10px] font-medium text-slate-800">SLA deadline approaching</span><span className="mt-1 block text-[9px] text-slate-500">CMP-28470 · 26 minutes remaining</span></span></button><button onClick={() => { setShowNotifications(false); navigate('duplicates') }} className="flex w-full gap-2.5 border-t border-slate-100 p-3.5 text-left hover:bg-slate-50"><span className="mt-0.5 size-2 rounded-full bg-amber-500" /><span><span className="block text-[10px] font-medium text-slate-800">Potential duplicate identified</span><span className="mt-1 block text-[9px] text-slate-500">CMP-28491 may match another case</span></span></button></div>}</div><div className="topbar-profile-wrap"><button className="profile-trigger" onClick={() => { setShowProfile(!showProfile); setShowNotifications(false) }} aria-expanded={showProfile}><span className="profile-avatar">{profile.displayName.trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span><span className="hidden text-left sm:block"><span className="block text-[10px] font-semibold text-slate-800">{profile.displayName}</span><span className="block text-[9px] text-slate-400">{role}</span></span><ChevronDown className="hidden size-3 text-slate-400 sm:block" /></button>{showProfile && <div className="topbar-popover right-0 w-48 p-1.5"><div className="px-2.5 py-2"><div className="text-[10px] font-semibold text-slate-800">Signed in as</div><div className="mt-1 truncate text-[11px] font-medium text-slate-700">{profile.displayName}</div><div className="mt-0.5 text-[9px] text-slate-400">{role}</div></div><button onClick={() => { void changeUser() }} className="profile-menu-item">Change user</button></div>}</div></div>
       </header>
       <main className="workspace-main">
-        {selected ? <ComplaintDetailView complaint={selected} complaints={liveComplaints} team={workspace.team} decisions={duplicateDecisions} onDuplicateDecision={(key, decision) => { void decideDuplicate(key, decision) }} onBack={() => { setDetailId(null); setView('inbox') }} onUpdate={updateComplaint} onRetryTriage={retryTriage} onCorrectTriage={correctTriage} />
+        {selected ? <ComplaintDetailView complaint={selected} complaints={liveComplaints} team={workspace.team} decisions={duplicateDecisions} onDuplicateDecision={(key, decision) => { void decideDuplicate(key, decision) }} onBack={() => { setDetailId(null); setView('inbox') }} onUpdate={updateComplaint} />
           : view === 'dashboard' ? <DashboardView complaints={liveComplaints} slaRules={slaRules} role={role} displayName={profile.displayName} onNavigate={navigate} onMetricFilter={applyMetricFilter} onSelectComplaint={selectComplaint} />
           : view === 'inbox' ? <InboxView complaints={liveComplaints} initialFilter={inboxFilter} searchTerm={inboxQuery} onSelectComplaint={selectComplaint} onNavigate={() => navigate('new')} />
           : view === 'new' ? <NewComplaintView onCreate={createComplaint} onCancel={() => navigate('inbox')} />
