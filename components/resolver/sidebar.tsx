@@ -2,7 +2,7 @@
 
 import {
   AlarmClock, BookOpen, ChartNoAxesCombined, CirclePlus, Copy, Inbox,
-  LayoutDashboard, LifeBuoy, LogOut, Settings2, UsersRound,
+  LayoutDashboard, LogOut, Settings2, UsersRound,
 } from 'lucide-react'
 import { navigation, type UserRole, type ViewKey } from './types'
 import { BrandLockup } from '@/components/brand-lockup'
@@ -36,11 +36,6 @@ export function Sidebar({ active, role, openCount, onNavigate, onLogout }: {
         })}
       </nav>
       <div className="mt-auto px-3 pb-4">
-        <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.04] p-3">
-          <div className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-emerald-400" /><span className="text-[11px] font-medium text-slate-200">Secure workspace</span></div>
-          <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">Complaint records are stored in Supabase.</p>
-        </div>
-        <button onClick={() => onNavigate('knowledge')} className="mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-[12px] text-slate-400 hover:bg-white/[0.07] hover:text-white"><LifeBuoy className="size-4" />Help center</button>
         <button onClick={onLogout} className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-[12px] text-slate-400 hover:bg-white/[0.07] hover:text-white"><LogOut className="size-4" />Sign out <span className="ml-auto text-[10px]">{role}</span></button>
       </div>
     </aside>

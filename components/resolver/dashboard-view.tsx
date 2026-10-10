@@ -33,7 +33,7 @@ export function DashboardView({ complaints, slaRules, onNavigate, onMetricFilter
   ]
   return <div className="flex flex-col gap-6">
     <div className="flex flex-wrap items-end justify-between gap-4">
-      <div><div className="flex items-center gap-2"><h1 className="text-[26px] font-semibold tracking-[-0.035em] text-slate-950">Good morning, {displayName.split(' ')[0]}</h1><span className="demo-tag"><span className="size-1.5 rounded-full bg-emerald-500" />WORKSPACE DATA</span></div><p className="mt-1 text-[12px] text-slate-500">Here’s what’s happening across complaint operations today.</p></div>
+      <div><h1 className="text-[26px] font-semibold tracking-[-0.035em] text-slate-950">Good morning, {displayName.split(' ')[0]}</h1><p className="mt-1 text-[12px] text-slate-500">Here’s what’s happening across complaint operations today.</p></div>
       <Button onClick={() => onNavigate('new')} className="h-9 rounded-md bg-[#2459c5] px-3.5 text-[12px] hover:bg-[#1d4ca8]"><Plus data-icon="inline-start" />New complaint</Button>
     </div>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
