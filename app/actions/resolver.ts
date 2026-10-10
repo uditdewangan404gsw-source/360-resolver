@@ -129,7 +129,7 @@ export async function loadCustomerConversationAction(complaintNumber: string) {
   const { supabase } = await requireStaff()
   const { data: complaint, error } = await supabase.from('complaints').select('id,customer_id').eq('complaint_number', complaintNumber).maybeSingle()
   if (error || !complaint) throw new Error('The complaint could not be loaded.')
-  if (!complaint.customer_id) return { enabled: false as const, messages: [] }
+  if (!complaint.customer_id) return { enabled: false as const, reason: 'not-linked' as const, messages: [] }
   const { data, error: messageError } = await supabase.from('customer_messages').select('id,sender_kind,body,created_at').eq('complaint_id', complaint.id).order('created_at')
   if (messageError) throw new Error('The customer conversation could not be loaded.')
   return { enabled: true as const, messages: data ?? [] }
@@ -140,9 +140,11 @@ export async function publishCustomerReplyAction(complaintNumber: string, body: 
   const { supabase, user } = await requireStaff()
   const { data: complaint, error } = await supabase.from('complaints').select('id,customer_id').eq('complaint_number', complaintNumber).maybeSingle()
   if (error || !complaint?.customer_id) throw new Error('This complaint does not have a customer portal conversation.')
-  const { error: insertError } = await supabase.from('customer_messages').insert({ complaint_id: complaint.id, sender_id: user.id, sender_kind: 'staff', body: body.trim() })
-  if (insertError) throw new Error('The customer reply could not be sent.')
-  return { id: crypto.randomUUID(), sender_kind: 'staff' as const, body: body.trim(), created_at: new Date().toISOString() }
+  const { data: message, error: insertError } = await supabase.from('customer_messages')
+    .insert({ complaint_id: complaint.id, sender_id: user.id, sender_kind: 'staff', body: body.trim() })
+    .select('id,sender_kind,body,created_at').single()
+  if (insertError || !message) throw new Error('The customer reply could not be sent.')
+  return message
 }
 
 function validateNewComplaint(input: NewComplaintInput) {

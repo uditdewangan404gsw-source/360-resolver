@@ -158,7 +158,7 @@ export function ResolverApp({
           : view === 'team' ? <TeamManagementView role={role} complaints={complaints} team={workspace.team} currentUserName={profile.displayName} onSelectComplaint={selectComplaint} />
           : <SettingsView />}
       </main>
-      <footer className="workspace-footer"><span>© 2026 360° Resolver</span><span className="footer-dot" />Supabase Auth · Persistent workspace records<span className="ml-auto">v0.1 prototype</span></footer>
+      <footer className="workspace-footer"><span>© 2026 360° Resolver</span></footer>
     </div>
   </div>
 }
